@@ -196,6 +196,29 @@ textarea:focus, input:focus, select:focus {
 .receipt .total { color: var(--good); font-weight: 700; }
 .receipt .snark { color: var(--accent2); margin-top: 6px; display: block; }
 
+.share-btn {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  background: #0f1115;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.share-btn:hover {
+  background: #1a1d24;
+  border-color: #3a4050;
+}
+
 .foot {
   text-align: center;
   font-size: 12px;

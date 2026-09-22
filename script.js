@@ -7,6 +7,9 @@
   var correctBtn = document.getElementById("correctBtn");
   var result = document.getElementById("result");
   var receipt = document.getElementById("receipt");
+  var shareBtn = document.getElementById("shareBtn");
+
+  var SITE_URL = "https://okjoshwaa.github.io/estimation-corrector/";
 
   var RULES = [
     { label: "\"just\"", pattern: /\bjust\b/i, multiplier: 1.5, reason: "famous last words" },
@@ -116,6 +119,45 @@
     return lines.join("\n");
   }
 
+  var lastResult = null;
+
+  function buildShareText(task, amount, unit, totalMultiplier, correctedHours) {
+    var taskShort = task.trim() || "a task";
+    if (taskShort.length > 80) taskShort = taskShort.slice(0, 77) + "...";
+
+    var lines;
+    if (totalMultiplier === 1) {
+      lines = [
+        'I asked the Estimation Corrector to catch me lying about "' + taskShort + '"',
+        "My estimate: " + amount + " " + unit + ". No red flags found. Suspicious.",
+        "",
+        SITE_URL
+      ];
+    } else {
+      lines = [
+        'I said "' + taskShort + '" would take ' + amount + " " + unit + ".",
+        "The Estimation Corrector said " + formatHours(correctedHours) + " (x" + totalMultiplier.toFixed(2) + ").",
+        "It was right.",
+        "",
+        SITE_URL
+      ];
+    }
+    return lines.join("\n");
+  }
+
+  function openShareIntent() {
+    if (!lastResult) return;
+    var text = buildShareText(
+      lastResult.task,
+      lastResult.amount,
+      lastResult.unit,
+      lastResult.totalMultiplier,
+      lastResult.correctedHours
+    );
+    var url = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(text);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   function run() {
     var task = taskInput.value;
     var amount = parseFloat(amountInput.value);
@@ -128,9 +170,18 @@
 
     receipt.innerHTML = buildReceipt(task, amount, unit, matches, totalMultiplier, correctedHours);
     result.classList.remove("hidden");
+
+    lastResult = {
+      task: task,
+      amount: amount,
+      unit: unit,
+      totalMultiplier: totalMultiplier,
+      correctedHours: correctedHours
+    };
   }
 
   correctBtn.addEventListener("click", run);
+  shareBtn.addEventListener("click", openShareIntent);
 
   document.querySelectorAll(".chip").forEach(function (chip) {
     chip.addEventListener("click", function () {
