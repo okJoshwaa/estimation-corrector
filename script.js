@@ -116,46 +116,280 @@
       : verdictLine(totalMultiplier);
     lines.push('<span class="line snark">' + escapeText(snark) + '</span>');
 
-    return lines.join("\n");
+    return { html: lines.join("\n"), snark: snark };
   }
 
   var lastResult = null;
 
-  function buildShareText(task, amount, unit, totalMultiplier, correctedHours) {
-    var taskShort = task.trim() || "a task";
-    if (taskShort.length > 80) taskShort = taskShort.slice(0, 77) + "...";
-
-    var lines;
+  function buildShareCaption(totalMultiplier) {
     if (totalMultiplier === 1) {
-      lines = [
-        'I asked the Estimation Corrector to catch me lying about "' + taskShort + '"',
-        "My estimate: " + amount + " " + unit + ". No red flags found. Suspicious.",
-        "",
-        SITE_URL
-      ];
-    } else {
-      lines = [
-        'I said "' + taskShort + '" would take ' + amount + " " + unit + ".",
-        "The Estimation Corrector said " + formatHours(correctedHours) + " (x" + totalMultiplier.toFixed(2) + ").",
-        "It was right.",
-        "",
-        SITE_URL
-      ];
+      return "Ran my estimate through the Estimation Corrector. No red flags found. Suspicious.\n\n" + SITE_URL;
     }
-    return lines.join("\n");
+    return "Ran my estimate through the Estimation Corrector. It caught me.\n\n" + SITE_URL;
+  }
+
+  // ---- Shareable panel (drawn on canvas, not a DOM screenshot) ----
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function glow(ctx, x, y, r, color) {
+    var g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function wrapLines(ctx, text, maxWidth, maxLines) {
+    var words = text.split(/\s+/).filter(Boolean);
+    var lines = [];
+    var line = "";
+    for (var i = 0; i < words.length; i++) {
+      var test = line ? line + " " + words[i] : words[i];
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line);
+        line = words[i];
+        if (lines.length === maxLines) break;
+      } else {
+        line = test;
+      }
+    }
+    if (lines.length < maxLines && line) lines.push(line);
+    if (words.length && lines.length === maxLines) {
+      var last = lines[maxLines - 1] || "";
+      while (ctx.measureText(last + "…").width > maxWidth && last.length > 0) {
+        last = last.slice(0, -1);
+      }
+      var consumed = lines.slice(0, maxLines - 1).join(" ").length;
+      if (consumed + last.length < text.length) last += "…";
+      lines[maxLines - 1] = last;
+    }
+    return lines;
+  }
+
+  function pill(ctx, text, x, y, opts) {
+    opts = opts || {};
+    ctx.font = opts.font || "700 20px monospace";
+    var padX = opts.padX != null ? opts.padX : 16;
+    var h = opts.height || 40;
+    var w = ctx.measureText(text).width + padX * 2;
+    ctx.fillStyle = opts.bg || "rgba(96,165,250,0.12)";
+    roundRect(ctx, x, y, w, h, h / 2);
+    ctx.fill();
+    if (opts.border) {
+      ctx.strokeStyle = opts.border;
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, x, y, w, h, h / 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = opts.color || "#60a5fa";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x + padX, y + h / 2 + 1);
+    ctx.textBaseline = "alphabetic";
+    return w;
+  }
+
+  function drawSharePanel(r) {
+    var W = 1200, H = 600, M = 56;
+    var canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    var ctx = canvas.getContext("2d");
+    var FONT = "-apple-system, BlinkMacSystemFont, Segoe UI, Inter, Roboto, sans-serif";
+    var MONO = '"SF Mono", Menlo, Consolas, monospace';
+
+    ctx.fillStyle = "#0b0d11";
+    ctx.fillRect(0, 0, W, H);
+    glow(ctx, 90, 40, 280, "rgba(96,165,250,0.22)");
+    glow(ctx, W - 60, H - 40, 320, "rgba(167,139,250,0.2)");
+
+    ctx.strokeStyle = "rgba(96,165,250,0.22)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, 16, 16, W - 32, H - 32, 22);
+    ctx.stroke();
+
+    // badge
+    pill(ctx, "⏱ ESTIMATE ≠ REALITY", M, 48, {
+      font: "700 16px " + MONO,
+      bg: "rgba(96,165,250,0.1)",
+      border: "rgba(96,165,250,0.3)",
+      color: "#60a5fa",
+      height: 34,
+      padX: 14
+    });
+
+    // title
+    var grad = ctx.createLinearGradient(M, 0, M + 620, 0);
+    grad.addColorStop(0, "#60a5fa");
+    grad.addColorStop(1, "#a78bfa");
+    ctx.fillStyle = grad;
+    ctx.font = "800 44px " + FONT;
+    ctx.fillText("The Estimation Corrector", M, 148);
+
+    // task
+    ctx.fillStyle = "#8b91a0";
+    ctx.font = "700 15px " + MONO;
+    ctx.fillText("TASK", M, 190);
+
+    ctx.fillStyle = "#eef0f4";
+    ctx.font = "26px " + FONT;
+    var taskText = (r.task || "").trim() || "(no description given)";
+    var taskLines = wrapLines(ctx, taskText, W - M * 2, 2);
+    taskLines.forEach(function (line, i) {
+      ctx.fillText(line, M, 224 + i * 34);
+    });
+    var afterTaskY = 224 + taskLines.length * 34 + 14;
+
+    // matched rule pills
+    var pillY = afterTaskY;
+    if (r.matches && r.matches.length) {
+      var px = M;
+      var rowLimit = W - M;
+      r.matches.slice(0, 5).forEach(function (rule) {
+        var label = rule.label.replace(/\\"/g, '"') + " x" + rule.multiplier.toFixed(1);
+        var w = ctx.measureText(label).width; // rough pre-measure font not set yet, set below
+        ctx.font = "700 15px " + MONO;
+        w = ctx.measureText(label).width + 28;
+        if (px + w > rowLimit) {
+          px = M;
+          pillY += 44;
+        }
+        var used = pill(ctx, label, px, pillY, {
+          font: "700 15px " + MONO,
+          bg: "rgba(251,191,36,0.1)",
+          border: "rgba(251,191,36,0.3)",
+          color: "#fbbf24",
+          height: 34,
+          padX: 14
+        });
+        px += used + 10;
+      });
+      pillY += 44 + 14;
+    } else {
+      pill(ctx, "no red flags detected", M, pillY, {
+        font: "700 15px " + MONO,
+        bg: "rgba(52,211,153,0.1)",
+        border: "rgba(52,211,153,0.3)",
+        color: "#34d399",
+        height: 34,
+        padX: 14
+      });
+      pillY += 44 + 14;
+    }
+
+    // stats row
+    var statsY = Math.max(pillY, 388);
+    ctx.fillStyle = "#8b91a0";
+    ctx.font = "700 15px " + MONO;
+    ctx.fillText("QUOTED", M, statsY);
+    ctx.fillStyle = "#f87171";
+    ctx.font = "800 46px " + MONO;
+    var quotedStr = r.amount + " " + r.unit;
+    ctx.fillText(quotedStr, M, statsY + 52);
+
+    var arrowX = M + Math.max(ctx.measureText(quotedStr).width, 160) + 40;
+    ctx.fillStyle = "#4b5160";
+    ctx.font = "40px " + FONT;
+    ctx.fillText("→", arrowX, statsY + 40);
+
+    var correctedX = arrowX + 64;
+    ctx.fillStyle = "#8b91a0";
+    ctx.font = "700 15px " + MONO;
+    ctx.fillText("CORRECTED", correctedX, statsY);
+    ctx.fillStyle = "#34d399";
+    ctx.font = "800 46px " + MONO;
+    ctx.fillText(formatHours(r.correctedHours), correctedX, statsY + 52);
+
+    // multiplier badge, right aligned
+    var multLabel = "×" + r.totalMultiplier.toFixed(2);
+    ctx.font = "800 26px " + MONO;
+    var multW = ctx.measureText(multLabel).width + 32;
+    var multX = W - M - multW;
+    pill(ctx, multLabel, multX, statsY - 6, {
+      font: "800 26px " + MONO,
+      bg: "rgba(167,139,250,0.12)",
+      border: "rgba(167,139,250,0.35)",
+      color: "#a78bfa",
+      height: 56,
+      padX: 16
+    });
+
+    // snark / verdict line
+    var snarkY = statsY + 100;
+    ctx.fillStyle = "#a78bfa";
+    ctx.font = "italic 22px " + FONT;
+    var snarkLines = wrapLines(ctx, r.snark || "", W - M * 2, 2);
+    snarkLines.forEach(function (line, i) {
+      ctx.fillText(line, M, snarkY + i * 30);
+    });
+
+    // footer
+    ctx.fillStyle = "#5a6070";
+    ctx.font = "16px " + MONO;
+    ctx.fillText(SITE_URL, M, H - 40);
+
+    return canvas;
+  }
+
+  function canvasToBlob(canvas) {
+    return new Promise(function (resolve) {
+      canvas.toBlob(resolve, "image/png");
+    });
+  }
+
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
+  function canUseNativeShare(file) {
+    return !!(navigator.share && navigator.canShare && file && navigator.canShare({ files: [file] }));
   }
 
   function openShareIntent() {
     if (!lastResult) return;
-    var text = buildShareText(
-      lastResult.task,
-      lastResult.amount,
-      lastResult.unit,
-      lastResult.totalMultiplier,
-      lastResult.correctedHours
-    );
-    var url = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(text);
-    window.open(url, "_blank", "noopener,noreferrer");
+    var canvas = drawSharePanel(lastResult);
+    var caption = buildShareCaption(lastResult.totalMultiplier);
+
+    canvasToBlob(canvas).then(function (blob) {
+      if (!blob) return;
+      var file;
+      try {
+        file = new File([blob], "estimation-corrector.png", { type: "image/png" });
+      } catch (e) {
+        file = null;
+      }
+
+      if (canUseNativeShare(file)) {
+        navigator.share({
+          files: [file],
+          text: caption
+        }).catch(function () {
+          // user cancelled the share sheet — nothing to do
+        });
+        return;
+      }
+
+      downloadBlob(blob, "estimation-corrector.png");
+      var url = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(caption + "\n\n(attach the image that just downloaded)");
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
   }
 
   function run() {
@@ -168,15 +402,18 @@
     var totalMultiplier = matches.length ? combineMultiplier(matches) : 1;
     var correctedHours = toHours(amount, unit) * totalMultiplier;
 
-    receipt.innerHTML = buildReceipt(task, amount, unit, matches, totalMultiplier, correctedHours);
+    var built = buildReceipt(task, amount, unit, matches, totalMultiplier, correctedHours);
+    receipt.innerHTML = built.html;
     result.classList.remove("hidden");
 
     lastResult = {
       task: task,
       amount: amount,
       unit: unit,
+      matches: matches,
       totalMultiplier: totalMultiplier,
-      correctedHours: correctedHours
+      correctedHours: correctedHours,
+      snark: built.snark
     };
   }
 

@@ -219,6 +219,13 @@ textarea:focus, input:focus, select:focus {
   border-color: #3a4050;
 }
 
+.share-hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .foot {
   text-align: center;
   font-size: 12px;
